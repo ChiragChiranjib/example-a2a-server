@@ -135,12 +135,46 @@ DEFAULT_MAX_TURNS = 5                      # Max tool calls per invocation
 DEFAULT_TIMEOUT = 300                      # 5 minute timeout
 ```
 
-## Requirements
+## Prerequisites
 
-- Python 3.10+
-- Claude Code CLI (`claude`) installed and authenticated
-- LangGraph
+### Required
 
-## License
+- **Python 3.10+**
+- **Claude Code CLI** (`claude`) installed
+- **Google Cloud SDK** (`gcloud`) authenticated for Claude Code access
+  ```bash
+  gcloud auth login
+  gcloud auth application-default login
+  ```
 
-MIT
+### Recommended (for faster responses)
+
+- **Claude Skills** in the target repository
+
+  If the repo you're evaluating has Claude Skills defined, responses will be significantly faster and more accurate. Skills provide pre-loaded knowledge about the codebase.
+
+  ```
+  target-repo/
+  └── .claude/
+      └── skills/
+          ├── architecture.md    # Codebase structure
+          ├── patterns.md        # Common patterns
+          └── navigation.md      # Where to find things
+  ```
+
+  Example skill file:
+  ```markdown
+  # Architecture
+  
+  This is a Go project using eBPF.
+  
+  Key directories:
+  - pkg/core/ - Core logic
+  - cmd/ - CLI entry points
+  ```
+
+### Python Dependencies
+
+- `fastapi` - A2A server
+- `langgraph` - Workflow orchestration
+- `uvicorn` - ASGI server

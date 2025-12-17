@@ -4,10 +4,15 @@ A2A Server - LangGraph + Claude Code.
 Logs per task:
 - tmp/logs/{task_id}.log        - System logs
 - tmp/logs/{task_id}_claude.log - Claude Code thinking
+
+Usage:
+  python -m repo_agent.server --repo /path/to/repo
+  python -m repo_agent.server  # uses default repo path
 """
 
 import os
 import uuid
+import argparse
 from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -21,8 +26,11 @@ from repo_agent.graph import run_review_critique
 
 app = FastAPI(title="Repo Expert A2A Server")
 
-# Hardcoded repo path - change this to your target repository
+# Default repo path - can be overridden via CLI --repo argument
 DEFAULT_REPO_PATH = "/Users/chirag.chiranjib/razorpay/golang/ebpf-openapi/keploy"
+
+# Runtime repo path (set by main())
+REPO_PATH = DEFAULT_REPO_PATH
 
 
 class JsonRpcRequest(BaseModel):
@@ -84,17 +92,12 @@ def extract_params(text: str) -> tuple[str, str]:
 async def handle_jsonrpc(request: JsonRpcRequest):
     """Handle A2A requests."""
 
-    logger.log("task_id", "A2A_REQ_RECEIVED",
-        details={"request": request})
-
     if request.method != "message/send":
         return JSONResponse({
             "jsonrpc": "2.0",
             "id": request.id,
             "error": {"code": -32601, "message": f"Method not found: {request.method}"}
         })
-    
-    logger.log("task_id", "A2A_REQ_NO_ERROR")
 
     # Extract message
     params = request.params or {}
@@ -114,9 +117,9 @@ async def handle_jsonrpc(request: JsonRpcRequest):
             "error": {"code": -32602, "message": "No text in message"}
         })
     
-    # Use hardcoded repo path, query is just the text
+    # Use configured repo path, query is just the text
     query = text.strip()
-    repo_path = DEFAULT_REPO_PATH
+    repo_path = REPO_PATH
 
     # Generate task ID and run workflow
     task_id = str(uuid.uuid4())[:8]
@@ -127,11 +130,15 @@ async def handle_jsonrpc(request: JsonRpcRequest):
     
     logger.log(task_id, "A2A Response sent")
     
+    # Generate context ID (required by Google A2A agent)
+    context_id = str(uuid.uuid4())
+    
     return JSONResponse({
         "jsonrpc": "2.0",
         "id": request.id,
         "result": {
             "id": task_id,
+            "contextId": context_id,
             "kind": "task",
             "status": {"state": "completed", "timestamp": datetime.now(timezone.utc).isoformat()},
             "artifacts": [{"parts": [{"kind": "text", "text": response}]}]
@@ -140,17 +147,40 @@ async def handle_jsonrpc(request: JsonRpcRequest):
 
 
 def main():
+    global REPO_PATH
     import uvicorn
     
+    # Parse CLI arguments
+    parser = argparse.ArgumentParser(description="Repo Expert A2A Server")
+    parser.add_argument(
+        "--repo", "-r",
+        default=DEFAULT_REPO_PATH,
+        help=f"Path to the repository to analyze (default: {DEFAULT_REPO_PATH})"
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("HOST", "0.0.0.0"),
+        help="Host to bind to (default: 0.0.0.0)"
+    )
+    parser.add_argument(
+        "--port", "-p",
+        type=int,
+        default=int(os.environ.get("PORT", "8001")),
+        help="Port to bind to (default: 8001)"
+    )
+    args = parser.parse_args()
+    
+    # Set the global repo path
+    REPO_PATH = args.repo
+    
     logs_dir = init_log_dirs()
-    host = os.environ.get("HOST", "0.0.0.0")
-    port = int(os.environ.get("PORT", "8001"))
     
     print(f"""
 ╔═══════════════════════════════════════════════════════════╗
 ║          Repo Expert A2A Server                           ║
 ╠═══════════════════════════════════════════════════════════╣
-║  Server: http://{host}:{port:<37}║
+║  Server: http://{args.host}:{args.port:<37}║
+║  Repo:   {REPO_PATH:<46}║
 ║  Logs:   {logs_dir:<46}║
 ║                                                           ║
 ║  Log files per task:                                      ║
@@ -159,7 +189,7 @@ def main():
 ╚═══════════════════════════════════════════════════════════╝
 """)
     
-    uvicorn.run("repo_agent.server:app", host=host, port=port)
+    uvicorn.run("repo_agent.server:app", host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

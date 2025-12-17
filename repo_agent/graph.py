@@ -14,7 +14,7 @@ import uuid
 from typing import TypedDict, Literal
 from langgraph.graph import StateGraph, START, END
 
-from repo_agent.claude import call_claude
+from repo_agent.claude import claude_agent
 from repo_agent.utils.system_logger import logger
 
 
@@ -52,7 +52,7 @@ Please provide an improved, complete answer addressing the feedback."""
         prompt = (f"You are a principle engineer who has expertise in understanding code fast and to answer queries. "
                   f"With your expertise please answer this query: {state['query']}")
     
-    answer, duration, _ = call_claude(prompt, state["repo_path"], task_id, f"generator_v{iteration}")
+    answer, duration, _ = claude_agent.call(prompt, state["repo_path"], task_id, f"generator_v{iteration}")
     
     logger.log(task_id, f"Generator: Done ({duration:.1f}s)")
     
@@ -85,7 +85,7 @@ Respond with EXACTLY one of these formats:
 
 Start your response with VALID, INVALID, or PARTIAL."""
 
-    validation, duration, _ = call_claude(prompt, state["repo_path"], task_id, f"validator_v{iteration}")
+    validation, duration, _ = claude_agent.call(prompt, state["repo_path"], task_id, f"validator_v{iteration}")
     
     # Parse validation status
     validation_upper = validation.strip().upper()
@@ -139,17 +139,18 @@ def create_graph():
     graph.add_node("validator", validator_node)
     
     graph.add_edge(START, "generator")
-    graph.add_edge("generator", "validator")
+    graph.add_edge("generator", END)
+    # graph.add_edge("generator", "validator")
     
-    # Conditional: loop back if invalid/partial, end if valid
-    graph.add_conditional_edges(
-        "validator",
-        should_continue,
-        {
-            "generator": "generator",
-            "end": END
-        }
-    )
+    # # Conditional: loop back if invalid/partial, end if valid
+    # graph.add_conditional_edges(
+    #     "validator",
+    #     should_continue,
+    #     {
+    #         "generator": "generator",
+    #         "end": END
+    #     }
+    # )
     
     return graph.compile()
 

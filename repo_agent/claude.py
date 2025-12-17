@@ -51,6 +51,7 @@ def call_claude(
     cmd = [
         CLAUDE_PATH,
         "-p", prompt,
+        "--verbose",
         "--output-format", "stream-json",
         "--dangerously-skip-permissions",
         "--max-turns", str(max_turns)

@@ -21,6 +21,9 @@ from repo_agent.graph import run_review_critique
 
 app = FastAPI(title="Repo Expert A2A Server")
 
+# Hardcoded repo path - change this to your target repository
+DEFAULT_REPO_PATH = "/Users/chirag.chiranjib/razorpay/golang/ebpf-openapi/keploy"
+
 
 class JsonRpcRequest(BaseModel):
     jsonrpc: str
@@ -44,8 +47,18 @@ async def agent_card():
         "skills": [{
             "id": "analyze_repo",
             "name": "Repository Analysis",
-            "description": "Analyzes repositories with validation. Include 'repo_path: /path' in query.",
-            "tags": ["code", "repository", "langgraph"]
+            "description": """Analyzes code repositories and answers questions about them.
+
+INPUT FORMAT: Your message MUST include the repository path in this format:
+  <your question> repo_path: /absolute/path/to/repository
+
+EXAMPLES:
+  - "What is this project about? repo_path: /Users/me/myproject"
+  - "Explain the main function repo_path: /home/user/code/app"
+  - "Find security issues repo_path: /var/www/webapp"
+
+The agent will analyze the repository using Claude Code and validate the answer.""",
+            "tags": ["code", "repository", "analysis", "claude"]
         }]
     }
 
@@ -70,7 +83,10 @@ def extract_params(text: str) -> tuple[str, str]:
 @app.post("/")
 async def handle_jsonrpc(request: JsonRpcRequest):
     """Handle A2A requests."""
-    
+
+    logger.log("task_id", "A2A_REQ_RECEIVED",
+        details={"request": request})
+
     if request.method != "message/send":
         return JSONResponse({
             "jsonrpc": "2.0",
@@ -78,6 +94,8 @@ async def handle_jsonrpc(request: JsonRpcRequest):
             "error": {"code": -32601, "message": f"Method not found: {request.method}"}
         })
     
+    logger.log("task_id", "A2A_REQ_NO_ERROR")
+
     # Extract message
     params = request.params or {}
     message = params.get("message", {})
@@ -96,20 +114,10 @@ async def handle_jsonrpc(request: JsonRpcRequest):
             "error": {"code": -32602, "message": "No text in message"}
         })
     
-    query, repo_path = extract_params(text)
-    
-    if not repo_path:
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": request.id,
-            "result": {
-                "id": str(uuid.uuid4()),
-                "kind": "task",
-                "status": {"state": "failed"},
-                "artifacts": [{"parts": [{"kind": "text", "text": "Include 'repo_path: /path/to/repo' in your message"}]}]
-            }
-        })
-    
+    # Use hardcoded repo path, query is just the text
+    query = text.strip()
+    repo_path = DEFAULT_REPO_PATH
+
     # Generate task ID and run workflow
     task_id = str(uuid.uuid4())[:8]
     
